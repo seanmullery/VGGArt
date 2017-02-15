@@ -1,10 +1,10 @@
 ########################################################################################
-# Sean Mullery 2017
-# A Neural Algorithm of Artistic Style.
-# Implemented in Tensorflow, based on the paper by Leon A. Gatys, Alexander S. Ecker
-# and Matthias Bethge.  https://arxiv.org/abs/1508.06576v2
-# Using the VGG network developed by Karen Simonyan, Andrew Zisserman
-# https://arxiv.org/abs/1409.1556
+# Sean Mullery 2017                                                                    # 
+# A Neural Algorithm of Artistic Style.                                                # 
+# Implemented in Tensorflow, based on the paper by Leon A. Gatys, Alexander S. Ecker   # 
+# and Matthias Bethge.  https://arxiv.org/abs/1508.06576v2                             # 
+# Using the VGG network developed by Karen Simonyan, Andrew Zisserman                  # 
+# https://arxiv.org/abs/1409.1556                                                      # 
 # VGG16 implemenation in TensorFlow by  Davi Frossard, 2016                            #
 # http://www.cs.toronto.edu/~frossard/post/vgg16/                                      #
 # using the following model                                                            #
