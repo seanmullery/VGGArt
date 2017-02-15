@@ -1,17 +1,23 @@
 ########################################################################################
-# Davi Frossard, 2016                                                                  #
-# VGG16 implementation in TensorFlow                                                   #
-# Details:                                                                             #
+# Sean Mullery 2017
+# A Neural Algorithm of Artistic Style.
+# Implemented in Tensorflow, based on the paper by Leon A. Gatys, Alexander S. Ecker
+# and Matthias Bethge.  https://arxiv.org/abs/1508.06576v2
+# Using the VGG network developed by Karen Simonyan, Andrew Zisserman
+# https://arxiv.org/abs/1409.1556
+# VGG16 implemenation in TensorFlow by  Davi Frossard, 2016                            #
 # http://www.cs.toronto.edu/~frossard/post/vgg16/                                      #
-#                                                                                      #
+# using the following model                                                            #
 # Model from https://gist.github.com/ksimonyan/211839e770f7b538e2d8#file-readme-md     #
 # Weights from Caffe converted using https://github.com/ethereon/caffe-tensorflow      #
 ########################################################################################
 from __future__ import print_function
 import tensorflow as tf
 import numpy as np
+import scipy.ndimage
 from scipy.misc import imread, imresize
 from imagenet_classes import class_names
+from copy import deepcopy
 
 import os
 from io import BytesIO
@@ -69,6 +75,12 @@ class vgg16:
                is not immediately obvious but may be later on'''
             self.parameters += [kernel, biases]
 
+
+        with tf.name_scope('cont1_1') as scope:
+            self.storedContent1_1 = tf.placeholder(tf.float32,shape=[224,224,64])
+            self.cont1_1 = self.conv1_1 - self.storedContent1_1
+
+
         # SM: insered following scope
         with tf.name_scope('styleMap1_1') as scope:
             featureMap = self.conv1_1
@@ -77,6 +89,10 @@ class vgg16:
             print(tf.shape(gram))
             self.styleMap1_1 = tf.reshape(gram, [64, -1])
 
+        with tf.name_scope('styleDiff1_1') as scope:
+            self.storedStyle1 = tf.placeholder(tf.float32, shape=[64, 64])
+            self.styleDiff1_1 = (tf.reduce_sum(tf.square(self.styleMap1_1 - self.storedStyle1))/(4 * (64 ** 2) * (50176 ** 2)))
+#(4.12489 * 1e-13)
         # conv1_2
         with tf.name_scope('conv1_2') as scope:
             kernel = tf.Variable(tf.truncated_normal([3, 3, 64, 64], dtype=tf.float32,
@@ -91,12 +107,17 @@ class vgg16:
             self.conv1_2 = tf.nn.relu(out, name=scope)
             self.parameters += [kernel, biases]
 
+        with tf.name_scope('cont1_2') as scope:
+            self.storedContent1_2 = tf.placeholder(tf.float32, shape=[224, 224, 64])
+            self.cont1_2 = self.conv1_2 - self.storedContent1_2
+
         # pool1
         self.pool1 = tf.nn.avg_pool(self.conv1_2,
                                ksize=[1, 2, 2, 1],
                                strides=[1, 2, 2, 1],
                                padding='SAME',
                                name='pool1')
+
 
         # conv2_1
         with tf.name_scope('conv2_1') as scope:
@@ -109,6 +130,10 @@ class vgg16:
             self.conv2_1 = tf.nn.relu(out, name=scope)
             self.parameters += [kernel, biases]
 
+        with tf.name_scope('cont2_1') as scope:
+            self.storedContent2_1 = tf.placeholder(tf.float32,shape=[112,112,128])
+            self.cont2_1 = self.conv2_1 - self.storedContent2_1
+
         # SM: insered following scope
         with tf.name_scope('styleMap2_1') as scope:
             featureMap = self.conv2_1
@@ -117,6 +142,10 @@ class vgg16:
             print(tf.shape(gram))
             self.styleMap2_1 = tf.reshape(gram, [128, -1])
 
+        with tf.name_scope('styleDiff2_1') as scope:
+            self.storedStyle2 = tf.placeholder(tf.float32, shape=[128, 128])
+            self.styleDiff2_1 = (tf.reduce_sum(tf.square(self.styleMap2_1 - self.storedStyle2))/(4 * (128 ** 2) * (12544 ** 2)))
+#(1.03122 * 1e-13)
         # conv2_2
         with tf.name_scope('conv2_2') as scope:
             kernel = tf.Variable(tf.truncated_normal([3, 3, 128, 128], dtype=tf.float32,
@@ -127,6 +156,12 @@ class vgg16:
             out = tf.nn.bias_add(conv, biases)
             self.conv2_2 = tf.nn.relu(out, name=scope)
             self.parameters += [kernel, biases]
+
+        with tf.name_scope('cont2_2') as scope:
+            self.storedContent2_2 = tf.placeholder(tf.float32,shape=[112,112,128])
+            self.cont2_2 = self.conv2_2 - self.storedContent2_2
+
+
 
         # pool2
         self.pool2 = tf.nn.avg_pool(self.conv2_2,
@@ -146,6 +181,11 @@ class vgg16:
             self.conv3_1 = tf.nn.relu(out, name=scope)
             self.parameters += [kernel, biases]
 
+        with tf.name_scope('cont3_1') as scope:
+            self.storedContent3_1 = tf.placeholder(tf.float32,shape=[56,56,256])
+            self.cont3_1 = self.conv3_1 - self.storedContent3_1
+
+
         # SM: insered following scope
         with tf.name_scope('styleMap3_1') as scope:
             featureMap = self.conv3_1
@@ -153,6 +193,11 @@ class vgg16:
             gram = tf.matmul(tf.matrix_transpose(featureMap), featureMap)
             print(tf.shape(gram))
             self.styleMap3_1 = tf.reshape(gram, [256, -1])
+
+        with tf.name_scope('styleDiff3_1') as scope:
+            self.storedStyle3 = tf.placeholder(tf.float32, shape=[256, 256])
+            self.styleDiff3_1 = (tf.reduce_sum(tf.square(self.styleMap3_1 - self.storedStyle3))/(4 * (256 ** 2) * (3136 ** 2)))
+#(2.57805 * 1e-12)
 
         # conv3_2
         with tf.name_scope('conv3_2') as scope:
@@ -165,6 +210,11 @@ class vgg16:
             self.conv3_2 = tf.nn.relu(out, name=scope)
             self.parameters += [kernel, biases]
 
+        with tf.name_scope('cont3_2') as scope:
+            self.storedContent3_2 = tf.placeholder(tf.float32,shape=[56,56,256])
+            self.cont3_2 = self.conv3_2 - self.storedContent3_2
+
+
         # conv3_3
         with tf.name_scope('conv3_3') as scope:
             kernel = tf.Variable(tf.truncated_normal([3, 3, 256, 256], dtype=tf.float32,
@@ -175,6 +225,10 @@ class vgg16:
             out = tf.nn.bias_add(conv, biases)
             self.conv3_3 = tf.nn.relu(out, name=scope)
             self.parameters += [kernel, biases]
+
+        with tf.name_scope('cont3_3') as scope:
+            self.storedContent3_3 = tf.placeholder(tf.float32,shape=[56,56,256])
+            self.cont3_3 = self.conv3_3 - self.storedContent3_3
 
         # pool3
         self.pool3 = tf.nn.avg_pool(self.conv3_3,
@@ -194,6 +248,11 @@ class vgg16:
             self.conv4_1 = tf.nn.relu(out, name=scope)
             self.parameters += [kernel, biases]
 
+        with tf.name_scope('cont4_1') as scope:
+            self.storedContent4_1 = tf.placeholder(tf.float32,shape=[28,28,512])
+            self.cont4_1 = self.conv4_1 - self.storedContent4_1
+
+
         # SM: insered following scope
         with tf.name_scope('styleMap4_1') as scope:
             featureMap = self.conv4_1
@@ -202,6 +261,10 @@ class vgg16:
             print(tf.shape(gram))
             self.styleMap4_1 = tf.reshape(gram, [512, -1])
 
+        with tf.name_scope('styleDiff4_1') as scope:
+            self.storedStyle4 = tf.placeholder(tf.float32, shape=[512, 512])
+            self.styleDiff4_1 = (tf.reduce_sum(tf.square(self.styleMap4_1 - self.storedStyle4))/(4 * (512 ** 2) * (784 ** 2)))
+#(6.44514 * 1e-11) #
         # conv4_2
         with tf.name_scope('conv4_2') as scope:
             kernel = tf.Variable(tf.truncated_normal([3, 3, 512, 512], dtype=tf.float32,
@@ -214,6 +277,11 @@ class vgg16:
             self.conv4_2 = tf.nn.relu(out, name=scope)
             self.parameters += [kernel, biases]
 
+        with tf.name_scope('cont4_2') as scope:
+            self.storedContent4_2 = tf.placeholder(tf.float32,shape=[28,28,512])
+            self.cont4_2 = self.conv4_2 - self.storedContent4_2
+
+
         # conv4_3
         with tf.name_scope('conv4_3') as scope:
             kernel = tf.Variable(tf.truncated_normal([3, 3, 512, 512], dtype=tf.float32,
@@ -224,6 +292,11 @@ class vgg16:
             out = tf.nn.bias_add(conv, biases)
             self.conv4_3 = tf.nn.relu(out, name=scope)
             self.parameters += [kernel, biases]
+
+        with tf.name_scope('cont4_3') as scope:
+            self.storedContent4_3 = tf.placeholder(tf.float32,shape=[28,28,512])
+            self.cont4_3 = self.conv4_3 - self.storedContent4_3
+
 
         # pool4
         self.pool4 = tf.nn.avg_pool(self.conv4_3,
@@ -243,6 +316,11 @@ class vgg16:
             self.conv5_1 = tf.nn.relu(out, name=scope)
             self.parameters += [kernel, biases]
 
+        with tf.name_scope('cont5_1') as scope:
+            self.storedContent5_1 = tf.placeholder(tf.float32,shape=[14,14,512])
+            self.cont5_1 = self.conv5_1 - self.storedContent5_1
+
+
         #SM: insered following scope
         with tf.name_scope('styleMap5_1') as scope:
             featureMap = self.conv5_1
@@ -251,6 +329,10 @@ class vgg16:
             print(tf.shape(gram))
             self.styleMap5_1 = tf.reshape(gram, [512, -1])
 
+        with tf.name_scope('styleDiff5_1') as scope:
+            self.storedStyle5 = tf.placeholder(tf.float32, shape=[512, 512])
+            self.styleDiff5_1 = (tf.reduce_sum(tf.square(self.styleMap5_1 - self.storedStyle5))/(4 * (512 ** 2) * (196 ** 2)))
+#(4.0281 * 1e-10)
 
         # conv5_2
         with tf.name_scope('conv5_2') as scope:
@@ -263,6 +345,11 @@ class vgg16:
             self.conv5_2 = tf.nn.relu(out, name=scope)
             self.parameters += [kernel, biases]
 
+        with tf.name_scope('cont5_2') as scope:
+            self.storedContent5_2 = tf.placeholder(tf.float32,shape=[14,14,512])
+            self.cont5_2 = self.conv5_2 - self.storedContent5_2
+
+
         # conv5_3
         with tf.name_scope('conv5_3') as scope:
             kernel = tf.Variable(tf.truncated_normal([3, 3, 512, 512], dtype=tf.float32,
@@ -273,6 +360,11 @@ class vgg16:
             out = tf.nn.bias_add(conv, biases)
             self.conv5_3 = tf.nn.relu(out, name=scope)
             self.parameters += [kernel, biases]
+
+        with tf.name_scope('cont5_3') as scope:
+            self.storedContent5_3 = tf.placeholder(tf.float32,shape=[14,14,512])
+            self.cont5_3 = self.conv5_3 - self.storedContent5_3
+
 
         # pool5
         self.pool5 = tf.nn.avg_pool(self.conv5_3,
@@ -514,61 +606,138 @@ def render_deepart(img0=img_noise, iter_n=10, step=1.5, octave_n=1, octave_scale
         showarray(img / 255.0)
 
 #render_lapnorm(T(layer)[:,:,:,channel])
-def render_naive(img0=img_noise, iter_n=20, step=1.0):
-    img1 = imread('Van_Gogh_-_Starry_Night_-_Google_Art_Project.bmp', mode='RGB')
-    img1 = imresize(img1, (224, 224))
 
-    img2 = imread('glasshouse.png', mode='RGB')
-    img2 = imresize(img2, (224, 224))
+
+
+
+def render_deepart3(img0=img_noise, iter_n=10, step=1.5, octave_n=1, octave_scale=1.4,lap_n=4):
+    art = imread('the_taking_of_christ448.png', mode='RGB')
+    #art = imread('Van_Gogh_-_Starry_Night_-_Google_Art_Project448.png', mode='RGB')
+
+    artS = imresize(art, (224, 224))
+
+    photo = imread('Macbeth2013_SMull-small-048.png', mode='RGB')
+    #photo = imread('glasshouse448.png', mode='RGB')
+    #photo = imread('salmon448.png', mode='RGB')
+    photoS = imresize(photo, (224, 224))/1.0
 
     styleDict = {'style1': vgg.styleMap1_1, 'style2': vgg.styleMap2_1, 'style3': vgg.styleMap3_1,
                  'style4': vgg.styleMap4_1, 'style5': vgg.styleMap5_1}
-    print(styleDict['style1'])
-    styleDict = sess.run(styleDict, feed_dict={vgg.imgs: [img1]})
-    # temp = sess.run(vgg.styleMap1_1, feed_dict={vgg.imgs: [img1]})
-    for i in styleDict:
-        print('Shape', styleDict[i].shape)
 
-    contentDict = {'cont1': vgg.conv1_1, 'cont2': vgg.conv2_1, 'cont3': vgg.conv3_1, 'cont4': vgg.conv4_2,
-                   'cont5': vgg.conv5_1}
-    contentDict = sess.run(contentDict, feed_dict={vgg.imgs: [img2]})
-    for i in contentDict:
-        print('shape', contentDict[i].shape)
+    print('Shape of artS is ', artS.shape)
 
-    loss = ((tf.reduce_sum(tf.square(vgg.styleMap1_1 - styleDict['style1'])) / (4 * (64 ** 2) * (50176 ** 2))) * 0.2 + \
-            (tf.reduce_sum(tf.square(vgg.styleMap2_1 - styleDict['style2'])) / (4 * (128 ** 2) * (12544 ** 2))) * 0.2 + \
-            (tf.reduce_sum(tf.square(vgg.styleMap3_1 - styleDict['style3'])) / (4 * (256 ** 2) * (3136 ** 2))) * 0.2 + \
-            (tf.reduce_sum(tf.square(vgg.styleMap4_1 - styleDict['style4'])) / (4 * (512 ** 2) * (784 ** 2))) * 0.2 + \
-            (tf.reduce_sum(tf.square(vgg.styleMap5_1 - styleDict['style5'])) / (4 * (512 ** 2) * (196 ** 2))) * 0.2) + \
-           tf.reduce_sum(tf.square(vgg.conv4_2 - contentDict['cont4'])) * 0.005
-    '''I think the following would train the parameters rather than perform gradient descent on the variables
-    in the system that are set to trainable but that's not what I want to do.'''
-    # optimizer = tf.train.GradientDescentOptimizer(0.1)
-    # train = optimizer.minimize(loss)
-    img_noise = np.random.uniform(-1, 1, size=(224, 224, 3)) + 127.0
+    styleDict = sess.run(styleDict, feed_dict={vgg.imgs: [artS]})
+    contentDict = { 'cont1_1': vgg.conv1_1}
+    contentDict = sess.run(contentDict, feed_dict={vgg.imgs: [photoS]})
+
+    loss = (vgg.styleDiff1_1 + vgg.styleDiff2_1 + vgg.styleDiff3_1 + vgg.styleDiff4_1 + vgg.styleDiff5_1)/5.0 + \
+        tf.reduce_sum(tf.square(vgg.cont1_1))*0.007
+
+
     t_grad = tf.gradients(loss, vgg.imgs)[0]
-    img = img_noise.copy()
-    #step = 2.0
-    for i in range(iter_n):
+    img = img0
+    #img = photoS
 
-        g, score = sess.run([t_grad, loss], {vgg.imgs: [img]})
-        # normalizing the gradient, so the same step size should work
-        g /= g.std() + 1e-8  # for different layers and networks
-        img -= (g * step)[0]
 
-        if i % 100 == 0:
-            print('Step', i, end='\n')
-            print(score, end='\n')
-            # if i % 1 == 0:
-            # showarray(visstd(img))
-    # clear_output()
-    # showarray(visstd(img0))
-    # result = Img.fromarray((visual * 255).astype(numpy.uint8))
-    print(score, end=' ')
-    # result.save('out.bmp')
+    for i in range(0):
+        g, score = sess.run([t_grad, loss], {vgg.imgs:[img], vgg.storedContent1_1: contentDict['cont1_1'][0], vgg.storedStyle1: styleDict['style1'] ,
+                              vgg.storedStyle2: styleDict['style2'], vgg.storedStyle3: styleDict['style3'],
+                              vgg.storedStyle4: styleDict['style4'], vgg.storedStyle5: styleDict['style5']})
 
-    showarray(visstd(img))
+        img -= (g * (step / (np.abs(g).mean() + 1e-7)))[0]
+        #print(score, end='\n')
+    showarray(img / 255.0)
+    #img = imresize(img, (448,448),interp='bicubic')/1.0
+    #img = photo/1.0
+    #showarray(img / 255.0)
+    img = np.random.uniform(low=-10.0, high=+10.0, size=(448, 448, 3)) + 127.0
 
+    #showarray(img / 255.0)
+
+    styleDictTensor = {'style1': vgg.styleMap1_1, 'style2': vgg.styleMap2_1, 'style3': vgg.styleMap3_1,
+                 'style4': vgg.styleMap4_1, 'style5': vgg.styleMap5_1}
+
+    for style in styleDictTensor:
+        h, w = styleDict[style].shape
+        styleDictTensor[style] = np.zeros((4,h,w))
+
+    styleDict = {'style1': vgg.styleMap1_1, 'style2': vgg.styleMap2_1, 'style3': vgg.styleMap3_1,
+                 'style4': vgg.styleMap4_1, 'style5': vgg.styleMap5_1}
+    contentDict = {'cont1_1': vgg.conv1_1}
+
+    for y in range(0,2):
+        for x in range(0,2):
+            artL = art[y*224:y*224+224, x*224:x*224+224]
+            subStyleDict = sess.run(styleDict, feed_dict={vgg.imgs: [artL]})
+            for style in subStyleDict:
+                styleDictTensor[style][2*y + x] = deepcopy(subStyleDict[style])
+
+    for style in styleDictTensor:
+        styleDict[style]=styleDictTensor[style].mean(axis=0)
+    print(img.dtype)
+    sz = 224;
+    '''
+
+    '''
+    for i in range(10000):
+        #if i%20 == 0:
+        sx, sy = np.random.randint(sz, size=2)  # SM: create two random ints (uniform) between 0 to sz (512)
+        img_shift = np.roll(np.roll(img, sx, 1), sy, 0)
+        photo_shift = np.roll(np.roll(photo, sx, 1), sy, 0)
+        for y in range(0,2):
+            for x in range(0,2):
+                photoL = photo_shift[y * 224:y * 224 + 224, x * 224:x * 224 + 224]
+                imgL = img_shift[y * 224:y * 224 + 224, x * 224:x * 224 + 224]
+                contentDict = {'cont1_1': vgg.conv1_1}
+                contentDict = sess.run(contentDict, feed_dict={vgg.imgs: [photoL]})
+
+                #for i in range(5):
+                g, score = sess.run([t_grad, loss], {vgg.imgs: [imgL], vgg.storedContent1_1: contentDict['cont1_1'][0],
+                                  vgg.storedStyle1: styleDict['style1'],
+                                  vgg.storedStyle2: styleDict['style2'], vgg.storedStyle3: styleDict['style3'],
+                                  vgg.storedStyle4: styleDict['style4'], vgg.storedStyle5: styleDict['style5']})
+
+                imgL -= (g * (step / (np.abs(g).mean() + 1e-7)))[0]
+                #if i==500:
+                 #  step /= 100.0
+                #imgL -= g[0]
+                #print('.', end=' ')
+                img_shift[y * 224:y * 224 + 224, x * 224:x * 224 + 224] = imgL
+        if i%100 == 0:
+            step=step/2.0
+            print(i,' ', score,end='\n')
+            showarray(img / 255.0)
+        img = np.roll(np.roll(img_shift, -sx, 1), -sy, 0)
+        photo = np.roll(np.roll(photo_shift, -sx, 1), -sy, 0)
+
+    #showarray(img / 255.0)
+
+
+
+    #octaves = []
+    '''for i in range(octave_n - 1):
+        hw = img.shape[0:2]
+        lo = resize(img, np.int32(np.float32(hw) / octave_scale))
+        print(hw)
+        hi = img - resize(lo, hw)
+        img = lo
+        octaves.append(hi)
+    '''
+    # generate details octave by octave
+    '''for octave in range(octave_n):
+        if octave > 0:
+            hi = octaves[-octave]
+            img = resize(img, hi.shape[:2]) + hi
+        for i in range(iter_n):
+            g = calc_grad_tiled(img, t_grad)
+            #SM: we can call lap norm here if necessary.
+            #g = lap_norm_func(g)
+            img -= g * (step / (np.abs(g).mean() + 1e-7))
+            print('.', end=' ')
+        #clear_output()
+        print(octave)
+        showarray(img / 255.0)
+    '''
 if __name__ == '__main__':
     sess = tf.Session()
     imgs = tf.placeholder(tf.float32,shape=[None, 224, 224, 3]) #SM 4D tensor with the first dimension the image number
@@ -580,8 +749,8 @@ if __name__ == '__main__':
 
     writer = tf.summary.FileWriter( '/home/smullery/PycharmProjects/VGGTF/', sess.graph)
 
-    render_naive(iter_n=500, step=2.0)
-    #render_deepart(iter_n=5, step = 2.0)
+
+    render_deepart3(iter_n=500, step = 2.0)
 
 
 
